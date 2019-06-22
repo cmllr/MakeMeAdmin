@@ -1,5 +1,5 @@
 ﻿// 
-// Copyright © 2010-2018, Sinclair Community College
+// Copyright © 2010-2019, Sinclair Community College
 // Licensed under the GNU General Public License, version 3.
 // See the LICENSE file in the project root for full license information.  
 //
@@ -25,12 +25,39 @@ namespace SinclairCC.MakeMeAdmin
     using System.ServiceModel;
     using System.ServiceProcess;
 
+    /// <summary>
+    /// This class is the Windows Service, which does privileged work
+    /// on behalf of the an unprivileged user.
+    /// </summary>
     public partial class MakeMeAdminService : ServiceBase
     {
+        /// <summary>
+        /// A timer to monitor when administrator rights should be removed.
+        /// </summary>
         private System.Timers.Timer removalTimer;
+
+        /// <summary>
+        /// A Windows Communication Foundation (WCF) service host which communicates over named pipes.
+        /// </summary>
+        /// <remarks>
+        /// This service host exists for communication on the local computer. It is not accessible
+        /// from remote computers, and it is therefore always enabled.
+        /// </remarks>
         private ServiceHost namedPipeServiceHost = null;
+
+        /// <summary>
+        /// A Windows Communication Foundation (WCF) service host which communicates over TCP.
+        /// </summary>
+        /// <remarks>
+        /// This service host exists for communication from remote computers. It is only
+        /// created if the remote administrator rights setting is enabled (true).
+        /// </remarks>
         private ServiceHost tcpServiceHost = null;
 
+
+        /// <summary>
+        /// Instantiate a new instance of the Make Me Admin Windows service.
+        /// </summary>
         public MakeMeAdminService()
         {
             InitializeComponent();
@@ -41,76 +68,107 @@ namespace SinclairCC.MakeMeAdmin
 
             this.removalTimer = new System.Timers.Timer()
             {
-                Interval = 10000,
-                AutoReset = true
+                Interval = 10000,   // Raise the Elapsed event every ten seconds.
+                AutoReset = true    // Raise the Elapsed event repeatedly.
             };
             this.removalTimer.Elapsed += RemovalTimerElapsed;
         }
 
+
+        /// <summary>
+        /// Handles the Elapsed event for the rights removal timer.
+        /// </summary>
+        /// <param name="sender">
+        /// The timer whose Elapsed event is firing.
+        /// </param>
+        /// <param name="e">
+        /// Data related to the event.
+        /// </param>
         private void RemovalTimerElapsed(object sender, System.Timers.ElapsedEventArgs e)
         {
-            /*
-            string[] expiredSidStrings = PrincipalList.GetExpiredSIDs();
-            foreach (string sidString in expiredSidStrings)
-            {
-                LocalAdministratorGroup.RemovePrincipal(new SecurityIdentifier(sidString), RemovalReason.Timeout);
-            }
-            */
-        
-            Principal[] expiredPrincipals = PrincipalList.GetExpiredPrincipals();
-            foreach (Principal prin in expiredPrincipals)
-            {
-#if DEBUG
-                ApplicationLog.WriteInformationEvent(string.Format("Expired Principal: {0}", prin.PrincipalSid.Value), EventID.DebugMessage);
-#endif
-                LocalAdministratorGroup.RemovePrincipal(prin.PrincipalSid, RemovalReason.Timeout);
+            EncryptedSettings encryptedSettings = new EncryptedSettings(EncryptedSettings.SettingsFilePath);
 
-                if ((Settings.EndRemoteSessionsUponExpiration) && (!string.IsNullOrEmpty(prin.RemoteAddress)))
+            User[] expiredUsers = encryptedSettings.GetExpiredUsers();
+
+            if (expiredUsers != null)
+            {
+                foreach (User prin in expiredUsers)
                 {
-                    string userName = prin.PrincipalName;
-                    while (userName.LastIndexOf("\\") >= 0)
+                    LocalAdministratorGroup.RemoveUser(prin.Sid, RemovalReason.Timeout);
+
+                    if ((Settings.EndRemoteSessionsUponExpiration) && (!string.IsNullOrEmpty(prin.RemoteAddress)))
                     {
-                        userName = userName.Substring(userName.LastIndexOf("\\") + 1);
+                        string userName = prin.Name;
+                        while (userName.LastIndexOf("\\") >= 0)
+                        {
+                            userName = userName.Substring(userName.LastIndexOf("\\") + 1);
+                        }
+
+                        int returnCode = 0;
+                        if (!string.IsNullOrEmpty(userName))
+                        {
+                            returnCode = LocalAdministratorGroup.EndNetworkSession(string.Format(@"\\{0}", prin.RemoteAddress), userName);
+                        }
                     }
-#if DEBUG
-                    ApplicationLog.WriteInformationEvent(string.Format("Ending session for \"{0}\" on \"{1}.\"", userName, prin.RemoteAddress), EventID.DebugMessage);
-#endif
-
-                    int returnCode = Shared.EndNetworkSession(string.Format(@"\\{0}", prin.RemoteAddress), userName);
-
-#if DEBUG
-                    ApplicationLog.WriteInformationEvent(string.Format("Ending session returned error code {0}.", returnCode), EventID.DebugMessage);
-#endif
                 }
             }
 
-            LocalAdministratorGroup.ValidateAllAddedPrincipals();
+            LocalAdministratorGroup.ValidateAllAddedUsers();
         }
 
+
+        /// <summary>
+        /// Creates the WCF Service Host which is accessible via named pipes.
+        /// </summary>
         private void OpenNamedPipeServiceHost()
         {
-            this.namedPipeServiceHost = new ServiceHost(typeof(AdminGroupManipulator), new Uri(Shared.NamedPipeServiceBaseAddress));
+            this.namedPipeServiceHost = new ServiceHost(typeof(AdminGroupManipulator), new Uri(Settings.NamedPipeServiceBaseAddress));
             this.namedPipeServiceHost.Faulted += ServiceHostFaulted;
             NetNamedPipeBinding binding = new NetNamedPipeBinding(NetNamedPipeSecurityMode.Transport);
-            this.namedPipeServiceHost.AddServiceEndpoint(typeof(IAdminGroup), binding, Shared.NamedPipeServiceBaseAddress);
+            this.namedPipeServiceHost.AddServiceEndpoint(typeof(IAdminGroup), binding, Settings.NamedPipeServiceBaseAddress);
             this.namedPipeServiceHost.Open();
         }
 
+
+        /// <summary>
+        /// Creates the WCF Service Host which is accessible via TCP.
+        /// </summary>
         private void OpenTcpServiceHost()
         {
-            this.tcpServiceHost = new ServiceHost(typeof(AdminGroupManipulator), new Uri(Shared.TcpServiceBaseAddress));
+            this.tcpServiceHost = new ServiceHost(typeof(AdminGroupManipulator), new Uri(Settings.TcpServiceBaseAddress));
             this.tcpServiceHost.Faulted += ServiceHostFaulted;
             NetTcpBinding binding = new NetTcpBinding(SecurityMode.Transport);
-            this.tcpServiceHost.AddServiceEndpoint(typeof(IAdminGroup), binding, Shared.TcpServiceBaseAddress);
+            this.tcpServiceHost.AddServiceEndpoint(typeof(IAdminGroup), binding, Settings.TcpServiceBaseAddress);
             this.tcpServiceHost.Open();
         }
 
+
+        /// <summary>
+        /// Handles the faulted event for a WCF service host.
+        /// </summary>
+        /// <param name="sender">
+        /// The service host that has entered the faulted state.
+        /// </param>
+        /// <param name="e">
+        /// Data related to the event.
+        /// </param>
         private void ServiceHostFaulted(object sender, EventArgs e)
         {
-            // TODO: i18n.
-            ApplicationLog.WriteInformationEvent("Service host faulted.", EventID.DebugMessage);
+            ApplicationLog.WriteEvent(Properties.Resources.ServiceHostFaulted, EventID.DebugMessage, System.Diagnostics.EventLogEntryType.Warning);
         }
 
+
+        /// <summary>
+        /// Handles the startup of the service. 
+        /// </summary>
+        /// <param name="args">
+        /// Data passed the start command.
+        /// </param>
+        /// <remarks>
+        /// This function executes when a Start command is sent to the service by the
+        /// Service Control Manager (SCM) or when the operating system starts
+        /// (for a service that starts automatically).
+        /// </remarks>
         protected override void OnStart(string[] args)
         {
             try
@@ -119,21 +177,33 @@ namespace SinclairCC.MakeMeAdmin
             }
             catch (Exception) { };
 
+            // Create the Windows Event Log source for this application.
             ApplicationLog.CreateSource();
 
+            // Open the service host which is accessible via named pipes.
             this.OpenNamedPipeServiceHost();
 
+            // If remote requests are allowed, open the service host which
+            // is accessible via TCP.
             if (Settings.AllowRemoteRequests)
             {
                 this.OpenTcpServiceHost();
             }
 
+            // Start the timer that watches for expired administrator rights.
             this.removalTimer.Start();
         }
 
+
+        /// <summary>
+        /// Handles the stopping of the service.
+        /// </summary>
+        /// <remarks>
+        /// Executes when a stop command is sent to the service by the Serivce Control Manager (SCM).
+        /// </remarks>
         protected override void OnStop()
         {
-            if (this.namedPipeServiceHost.State == CommunicationState.Opened)
+            if ((this.namedPipeServiceHost != null) && (this.namedPipeServiceHost.State == CommunicationState.Opened))
             {
                 this.namedPipeServiceHost.Close();
             }
@@ -145,89 +215,71 @@ namespace SinclairCC.MakeMeAdmin
 
             this.removalTimer.Stop();
 
-            SecurityIdentifier[] sids = PrincipalList.GetSIDs();
+            EncryptedSettings encryptedSettings = new EncryptedSettings(EncryptedSettings.SettingsFilePath);
+            SecurityIdentifier[] sids = encryptedSettings.AddedUserSIDs;
             for (int i = 0; i < sids.Length; i++)
             {
-                LocalAdministratorGroup.RemovePrincipal(sids[i], RemovalReason.ServiceStopped);
+                LocalAdministratorGroup.RemoveUser(sids[i], RemovalReason.ServiceStopped);
             }
 
             base.OnStop();
         }
 
+
+        /// <summary>
+        /// Executes when a change event is received from a Terminal Server session.
+        /// </summary>
+        /// <param name="changeDescription">
+        /// Identifies the type of session change and the session to which it applies.
+        /// </param>
         protected override void OnSessionChange(SessionChangeDescription changeDescription)
         {
-
             switch (changeDescription.Reason)
             {
                 // The user has logged off from a session, either locally or remotely.
                 case SessionChangeReason.SessionLogoff:
-#if DEBUG
-                    ApplicationLog.WriteInformationEvent(string.Format("Session {0} has logged off.", changeDescription.SessionId), EventID.DebugMessage);
-#endif
-                        //if (Settings.RemoveAdminRightsOnLogout)
-                        //{
-                            System.Collections.Generic.List<SecurityIdentifier> sidsToRemove = new System.Collections.Generic.List<SecurityIdentifier>(PrincipalList.GetSIDs());
 
-                            /*
-#if DEBUG
-                            ApplicationLog.WriteInformationEvent("SID to remove list has been retrieved.", EventID.DebugMessage);
-                            for (int i = 0; i < sidsToRemove.Count; i++)
-                            {
-                                ApplicationLog.WriteInformationEvent(string.Format("SID to remove: {0}", sidsToRemove[i]), EventID.DebugMessage);
-                            }
-#endif
-                            */
+                    EncryptedSettings encryptedSettings = new EncryptedSettings(EncryptedSettings.SettingsFilePath);
+                    System.Collections.Generic.List<SecurityIdentifier> sidsToRemove = new System.Collections.Generic.List<SecurityIdentifier>(encryptedSettings.AddedUserSIDs);
 
-                            int[] sessionIds = LsaLogonSessions.LogonSessions.GetLoggedOnUserSessionIds();
-                            foreach (int id in sessionIds)
-                            {
-                                SecurityIdentifier sid = LsaLogonSessions.LogonSessions.GetSidForSessionId(id);
-                                if (sid != null)
-                                {
-                                    if (sidsToRemove.Contains(sid))
-                                    {
-                                        sidsToRemove.Remove(sid);
-                                    }
-                                }
-                            }
+                    int[] sessionIds = LsaLogonSessions.LogonSessions.GetLoggedOnUserSessionIds();
 
-                            /*
-#if DEBUG
-                            ApplicationLog.WriteInformationEvent("SID to remove list has been updated.", EventID.DebugMessage);
-                            for (int i = 0; i < sidsToRemove.Count; i++)
-                            {
-                                ApplicationLog.WriteInformationEvent(string.Format("SID to remove: {0}", sidsToRemove[i]), EventID.DebugMessage);
-                            }
-#endif
-                            */
-
-                            for (int i = 0; i < sidsToRemove.Count; i++)
-                            {
-                                if (
-                                    (!(PrincipalList.ContainsSID(sidsToRemove[i]) && PrincipalList.IsRemote(sidsToRemove[i])))
-                                    &&
-                                    (Settings.RemoveAdminRightsOnLogout || !PrincipalList.GetExpirationTime(sidsToRemove[i]).HasValue)
-                                   )
-                                {
-                                    LocalAdministratorGroup.RemovePrincipal(sidsToRemove[i], RemovalReason.UserLogoff);
-                                }
-                            }
-
-                            /*
-                             * In theory, this code should remove the user associated with the logoff, but it doesn't work.
-                            SecurityIdentifier sid = LsaLogonSessions.LogonSessions.GetSidForSessionId(changeDescription.SessionId);
-                            if (!(PrincipalList.ContainsSID(sid) && PrincipalList.IsRemote(sid)))
-                            {
-                                LocalAdministratorGroup.RemovePrincipal(sid, RemovalReason.UserLogoff);
-                            }
-                            */
-                        //}
-                        /*
-                        else
+                    // For any user that is still logged on, remove their SID from the list of
+                    // SIDs to be removed from Administrators. That is, let the users who are still
+                    // logged on stay in the Administrators group.
+                    foreach (int id in sessionIds)
+                    {
+                        SecurityIdentifier sid = LsaLogonSessions.LogonSessions.GetSidForSessionId(id);
+                        if (sid != null)
                         {
-#if DEBUG
-                            ApplicationLog.WriteInformationEvent("Removing admin rights on log off is disabled.", EventID.DebugMessage);
-#endif
+                            if (sidsToRemove.Contains(sid))
+                            {
+                                sidsToRemove.Remove(sid);
+                            }
+                        }
+                    }
+
+                    // Process the list of SIDs to be removed from Administrators.
+                    for (int i = 0; i < sidsToRemove.Count; i++)
+                    {
+                        if (
+                            // If the user is not remote.
+                            (!(encryptedSettings.ContainsSID(sidsToRemove[i]) && encryptedSettings.IsRemote(sidsToRemove[i])))
+                            &&
+                            // If admin rights are to be removed on logoff, or the user's rights do not expire.
+                            (Settings.RemoveAdminRightsOnLogout || !encryptedSettings.GetExpirationTime(sidsToRemove[i]).HasValue)
+                            )
+                        {
+                            LocalAdministratorGroup.RemoveUser(sidsToRemove[i], RemovalReason.UserLogoff);
+                        }
+                    }
+
+                    /*
+                     * In theory, this code should remove the user associated with the logoff, but it doesn't work.
+                    SecurityIdentifier sid = LsaLogonSessions.LogonSessions.GetSidForSessionId(changeDescription.SessionId);
+                    if (!(UserList.ContainsSID(sid) && UserList.IsRemote(sid)))
+                    {
+                        LocalAdministratorGroup.RemoveUser(sid, RemovalReason.UserLogoff);
                     }
                     */
 
@@ -235,42 +287,35 @@ namespace SinclairCC.MakeMeAdmin
 
                 // The user has logged on to a session, either locally or remotely.
                 case SessionChangeReason.SessionLogon:
-#if DEBUG
-                    // TODO: i18n.
-                    ApplicationLog.WriteInformationEvent(string.Format("Session logon. Session ID: {0}", changeDescription.SessionId), EventID.SessionChangeEvent);
-#endif
 
                     WindowsIdentity userIdentity = LsaLogonSessions.LogonSessions.GetWindowsIdentityForSessionId(changeDescription.SessionId);
 
                     if (userIdentity != null)
                     {
-                        /*
-#if DEBUG
-                        ApplicationLog.WriteInformationEvent("User identity is not null.", EventID.DebugMessage);
-                        ApplicationLog.WriteInformationEvent(string.Format("user name: {0}", userIdentity.Name), EventID.DebugMessage);
-                        ApplicationLog.WriteInformationEvent(string.Format("user SID: {0}", userIdentity.User), EventID.DebugMessage);
-#endif
-                        */
 
+                        NetNamedPipeBinding binding = new NetNamedPipeBinding(NetNamedPipeSecurityMode.Transport);
+                        ChannelFactory<IAdminGroup> namedPipeFactory = new ChannelFactory<IAdminGroup>(binding, Settings.NamedPipeServiceBaseAddress);
+                        IAdminGroup channel = namedPipeFactory.CreateChannel();
+                        bool userIsAuthorizedForAutoAdd = channel.UserIsAuthorized(Settings.AutomaticAddAllowed, Settings.AutomaticAddDenied);
+                        namedPipeFactory.Close();
+
+                        // If the user is in the automatic add list, then add them to the Administrators group.
                         if (
                             (Settings.AutomaticAddAllowed != null) &&
                             (Settings.AutomaticAddAllowed.Length > 0) &&
-                            (Shared.UserIsAuthorized(userIdentity, Settings.AutomaticAddAllowed, Settings.AutomaticAddDenied))
+                            (userIsAuthorizedForAutoAdd /*UserIsAuthorized(userIdentity, Settings.AutomaticAddAllowed, Settings.AutomaticAddDenied)*/)
                            )
                         {
-#if DEBUG
-                            ApplicationLog.WriteInformationEvent("User is allowed to be automatically added!", EventID.DebugMessage);
-#endif
-                            LocalAdministratorGroup.AddPrincipal(userIdentity, null, null);
+                            LocalAdministratorGroup.AddUser(userIdentity, null, null);
                         }
                     }
                     else
                     {
-                        // TODO: i18n.
-                        ApplicationLog.WriteWarningEvent("User identity is null.", EventID.DebugMessage);
+                        ApplicationLog.WriteEvent(Properties.Resources.UserIdentifyIsNull, EventID.DebugMessage, System.Diagnostics.EventLogEntryType.Warning);
                     }
 
                     break;
+
                 /*
                 // The user has reconnected or logged on to a remote session.
                 case SessionChangeReason.RemoteConnect:

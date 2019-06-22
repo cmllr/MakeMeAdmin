@@ -1,5 +1,5 @@
 ﻿// 
-// Copyright © 2010-2018, Sinclair Community College
+// Copyright © 2010-2019, Sinclair Community College
 // Licensed under the GNU General Public License, version 3.
 // See the LICENSE file in the project root for full license information.  
 //
@@ -22,17 +22,39 @@ namespace SinclairCC.MakeMeAdmin
 {
     using System.ServiceModel;
 
+    /// <summary>
+    /// This interface defines the WCF service contract.
+    /// </summary>
     [ServiceContract(Namespace = "http://apps.sinclair.edu/makemeadmin/2017/10/")]
     public interface IAdminGroup
     {
+        /// <summary>
+        /// Adds a user to the Administrators group.
+        /// </summary>
         [OperationContract]
-        void AddPrincipalToAdministratorsGroup();
+        void AddUserToAdministratorsGroup();
+
+        /// <summary>
+        /// Removes a user from the Administrators group.
+        /// </summary>
+        /// <param name="reason">
+        /// The reason that the user is being removed.
+        /// </param>
+        [OperationContract]
+        void RemoveUserFromAdministratorsGroup(RemovalReason reason);
+
+        /// <summary>
+        /// Returns a value indicating whether a user is 
+        /// already in the list of added users.
+        /// </summary>
+        /// <returns>
+        /// Returns true if the users is already in the list
+        /// of added users.
+        /// </returns>
+        [OperationContract]
+        bool UserIsInList();
 
         [OperationContract]
-        void RemovePrincipalFromAdministratorsGroup(RemovalReason reason);
-
-        [OperationContract]
-        bool PrincipalIsInList();
+        bool UserIsAuthorized(string[] allowedSidsList, string[] deniedSidsList);
     }
-
 }

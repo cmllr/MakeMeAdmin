@@ -44,6 +44,14 @@
     <Compile Include="Product.wxs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Enumerations\Enumerations.csproj">
+      <Name>Enumerations</Name>
+      <Project>{5fb1809b-b0fd-48e9-9e47-3cb048369433}</Project>
+      <Private>True</Private>
+      <DoNotHarvest>True</DoNotHarvest>
+      <RefProjectOutputGroups>Binaries;Content;Satellites</RefProjectOutputGroups>
+      <RefTargetDir>INSTALLFOLDER</RefTargetDir>
+    </ProjectReference>
     <ProjectReference Include="..\LsaLogonSessions\LsaLogonSessions.csproj">
       <Name>LsaLogonSessions</Name>
       <Project>{a2107c86-7cb5-45ee-89e8-1bc7261f7762}</Project>
@@ -55,6 +63,14 @@
     <ProjectReference Include="..\Logging\Logging.csproj">
       <Name>Logging</Name>
       <Project>{f5a53b43-5d6d-48ec-bc44-c0c1a0cefa8d}</Project>
+      <Private>True</Private>
+      <DoNotHarvest>True</DoNotHarvest>
+      <RefProjectOutputGroups>Binaries;Content;Satellites</RefProjectOutputGroups>
+      <RefTargetDir>INSTALLFOLDER</RefTargetDir>
+    </ProjectReference>
+    <ProjectReference Include="..\UserList\UserList.csproj">
+      <Name>UserList</Name>
+      <Project>{9cfd5fa4-5ad6-463c-87e5-3f42133b5da8}</Project>
       <Private>True</Private>
       <DoNotHarvest>True</DoNotHarvest>
       <RefProjectOutputGroups>Binaries;Content;Satellites</RefProjectOutputGroups>
@@ -84,9 +100,9 @@
       <RefProjectOutputGroups>Binaries;Content;Satellites</RefProjectOutputGroups>
       <RefTargetDir>INSTALLFOLDER</RefTargetDir>
     </ProjectReference>
-    <ProjectReference Include="..\Shared\Shared.csproj">
-      <Name>Shared</Name>
-      <Project>{1d796627-c3a2-4a12-84e3-21981300b1de}</Project>
+    <ProjectReference Include="..\Settings\Settings.csproj">
+      <Name>Settings</Name>
+      <Project>{8a516d69-ba38-429f-affe-c571b5c1e482}</Project>
       <Private>True</Private>
       <DoNotHarvest>True</DoNotHarvest>
       <RefProjectOutputGroups>Binaries;Content;Satellites</RefProjectOutputGroups>
@@ -119,7 +135,7 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="en-US.wxl" />
-    <EmbeddedResource Include="fr-CA.wxl" />
+    <EmbeddedResource Include="fr.wxl" />
   </ItemGroup>
   <Import Project="$(WixTargetsPath)" />
   <!--
@@ -158,6 +174,7 @@
     </CreateProperty>
   </Target>
   <PropertyGroup>
-    <PostBuildEvent>if not exist "$(ProjectDir)..\Installers" mkdir "$(ProjectDir)..\Installers\"</PostBuildEvent>
+    <PostBuildEvent>if not exist "$(ProjectDir)..\Installers" mkdir "$(ProjectDir)..\Installers"
+xcopy "$(TargetDir)%2a.msi" "$(ProjectDir)..\Installers" /y /e</PostBuildEvent>
   </PropertyGroup>
 </Project>

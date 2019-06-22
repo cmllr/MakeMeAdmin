@@ -1,5 +1,5 @@
 ﻿// 
-// Copyright © 2010-2018, Sinclair Community College
+// Copyright © 2010-2019, Sinclair Community College
 // Licensed under the GNU General Public License, version 3.
 // See the LICENSE file in the project root for full license information.  
 //
@@ -39,8 +39,7 @@ namespace LsaLogonSessions
         
 
         /// <summary>
-        /// Gets the security identifier (SID) associated with a particular
-        /// session ID.
+        /// Gets the security identifier (SID) associated with a particular session ID.
         /// </summary>
         /// <param name="sessionId">
         /// The session ID for which the SID should be retrieved.
@@ -68,6 +67,16 @@ namespace LsaLogonSessions
         }
 
 
+        /// <summary>
+        /// Creates a WindowsIdentity object for the user session with the given ID.
+        /// </summary>
+        /// <param name="sessionId">
+        /// The session ID for which the WindowsIdentity object is to be constructed.
+        /// </param>
+        /// <returns>
+        /// Returns a WindowsIdentity object for the given session ID, if the session ID can be found.
+        /// If the session ID cannot be found, null is returned.
+        /// </returns>
         public static WindowsIdentity GetWindowsIdentityForSessionId(int sessionId)
         {
             WindowsIdentity returnIdentity = null;
@@ -127,6 +136,65 @@ namespace LsaLogonSessions
             return returnSid;
         }
 
+        /// <summary>
+        /// Gets the group memberships for the user with the specified token.
+        /// </summary>
+        /// <param name="tokenHandle">
+        /// The handle to the user's token.
+        /// </param>
+        /// <returns>
+        /// Returns an array of security identifiers (SIDs), one for each
+        /// group of which the given user is a member.
+        /// </returns>
+        public static SecurityIdentifier[] GetGroupMemberships(IntPtr tokenHandle)
+        {
+            int returnLength = 0;
+            SecurityIdentifier[] returnArray = null;
+
+            // Get the size of the memory chunk that we need in order to retrieve the TOKEN_GROUPS structure.
+            bool nativeReturnValue = NativeMethods.GetTokenInformation(tokenHandle, TOKEN_INFORMATION_CLASS.TokenGroups, IntPtr.Zero, returnLength, out returnLength);
+
+            int lastError = Marshal.GetLastWin32Error();
+
+            if (returnLength > 0)
+            {
+                // Allocate enough memory to store a TOKEN_GROUPS structure.
+                IntPtr tokenInfo = Marshal.AllocHGlobal(returnLength);
+
+                // Get the TOKEN_GROUPS structure for the token.
+                nativeReturnValue = NativeMethods.GetTokenInformation(tokenHandle, TOKEN_INFORMATION_CLASS.TokenGroups, tokenInfo, returnLength, out returnLength);
+
+                lastError = Marshal.GetLastWin32Error();
+
+                if (nativeReturnValue)
+                {
+                    TOKEN_GROUPS tokenGroups = (TOKEN_GROUPS)Marshal.PtrToStructure(tokenInfo, typeof(TOKEN_GROUPS));
+                    returnArray = new SecurityIdentifier[tokenGroups.GroupCount];
+                    uint groupCount = tokenGroups.GroupCount;
+
+                    IntPtr currentItem = new IntPtr(tokenInfo.ToInt64() + Marshal.SizeOf(typeof(TOKEN_GROUPS)) - Marshal.SizeOf(typeof(IntPtr)));
+                    int sidAndAttrSize = Marshal.SizeOf(new SID_AND_ATTRIBUTES());
+                    for (int i = 0; i < groupCount; i++)
+                    {
+                        SID_AND_ATTRIBUTES sidAndAttributes = (SID_AND_ATTRIBUTES)Marshal.PtrToStructure(new IntPtr(tokenInfo.ToInt64() + i * sidAndAttrSize + IntPtr.Size), typeof(SID_AND_ATTRIBUTES));
+
+                        IntPtr pstr = IntPtr.Zero;
+                        NativeMethods.ConvertSidToStringSid(sidAndAttributes.Sid, out pstr);
+                        string sidString = Marshal.PtrToStringAuto(pstr);
+                        NativeMethods.LocalFree(pstr);
+
+                        returnArray[i] = new SecurityIdentifier(sidString);
+                        currentItem = new IntPtr(currentItem.ToInt64() + Marshal.SizeOf(typeof(SID_AND_ATTRIBUTES)));
+                    }
+
+                }
+
+                // Free the memory that we allocated earlier for the TOKEN_GROUPS structure.
+                Marshal.FreeHGlobal(tokenInfo);
+            }
+
+            return returnArray;
+        }
 
         /// <summary>
         /// Gets an array containing the session IDs of the currently logged-on users for the

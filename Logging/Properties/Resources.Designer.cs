@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace SinclairCC.Apps.MakeMeAdmin.Properties {
+namespace SinclairCC.MakeMeAdmin.Properties {
     using System;
     
     
@@ -39,7 +39,7 @@ namespace SinclairCC.Apps.MakeMeAdmin.Properties {
         internal static global::System.Resources.ResourceManager ResourceManager {
             get {
                 if (object.ReferenceEquals(resourceMan, null)) {
-                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("SinclairCC.Apps.MakeMeAdmin.Properties.Resources", typeof(Resources).Assembly);
+                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("SinclairCC.MakeMeAdmin.Properties.Resources", typeof(Resources).Assembly);
                     resourceMan = temp;
                 }
                 return resourceMan;
@@ -57,6 +57,15 @@ namespace SinclairCC.Apps.MakeMeAdmin.Properties {
             }
             set {
                 resourceCulture = value;
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Application.
+        /// </summary>
+        internal static string ApplicationLogName {
+            get {
+                return ResourceManager.GetString("ApplicationLogName", resourceCulture);
             }
         }
     }

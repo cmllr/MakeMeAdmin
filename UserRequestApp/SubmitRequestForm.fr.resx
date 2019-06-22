@@ -12,25 +12,25 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="appStatus.Text" xml:space="preserve">
-    <value>Prêt.</value>
-  </data>
-  <data name="exitButton.ToolTip" xml:space="preserve">
-    <value>Quitter l'application.</value>
-  </data>
-  <data name="exitButton.Text" xml:space="preserve">
-    <value>&amp;Quitter</value>
-  </data>
-  <data name="removeMeButton.ToolTip" xml:space="preserve">
-    <value>Retirer l'utilisateur Windows actuel du groupe Administrateurs.</value>
-  </data>
-  <data name="removeMeButton.Text" xml:space="preserve">
-    <value>M'&amp;enlever les droits administrateur</value>
+  <data name="addMeButton.Text" xml:space="preserve">
+    <value>M'&amp;attribuer les droits administrateur</value>
   </data>
   <data name="addMeButton.ToolTip" xml:space="preserve">
     <value>Ajouter l'utilisateur Windows actuel au groupe Administrateurs.</value>
   </data>
-  <data name="addMeButton.Text" xml:space="preserve">
-    <value>M'&amp;attribuer les droits administrateur</value>
+  <data name="exitButton.Text" xml:space="preserve">
+    <value>&amp;Quitter</value>
+  </data>
+  <data name="exitButton.ToolTip" xml:space="preserve">
+    <value>Quitter l'application.</value>
+  </data>
+  <data name="removeMeButton.Text" xml:space="preserve">
+    <value>M'&amp;enlever les droits administrateur</value>
+  </data>
+  <data name="removeMeButton.ToolTip" xml:space="preserve">
+    <value>Retirer l'utilisateur Windows actuel du groupe Administrateurs.</value>
+  </data>
+  <data name="appStatus.Text" xml:space="preserve">
+    <value>Prêt.</value>
   </data>
 </root>

@@ -1,5 +1,5 @@
 ﻿// 
-// Copyright © 2010-2018, Sinclair Community College
+// Copyright © 2010-2019, Sinclair Community College
 // Licensed under the GNU General Public License, version 3.
 // See the LICENSE file in the project root for full license information.  
 //
@@ -37,8 +37,6 @@ namespace LsaLogonSessions
         [DllImport("wtsapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         internal static extern IntPtr WTSOpenServer([MarshalAs(UnmanagedType.LPWStr)] string serverName);
         */
-
-
 
         /// <summary>
         /// Retrieves a list of sessions on a specified Remote Desktop Session Host (RD Session Host) server.
@@ -202,5 +200,33 @@ namespace LsaLogonSessions
             [In] int TokenInformationLength,
             [Out] out int ReturnLength);
 
+        /// <summary>
+        /// Converts a security identifier (SID) to a string format suitable for display, storage, or transmission.
+        /// </summary>
+        /// <param name="pSID">
+        /// A pointer to the SID structure to be converted.
+        /// </param>
+        /// <param name="ptrSid">
+        /// A pointer to a variable that receives a pointer to a null-terminated SID string.
+        /// </param>
+        /// <returns>
+        /// If the function succeeds, the return value is nonzero.
+        /// If the function fails, the return value is zero.
+        /// </returns>
+        [DllImport("advapi32", CharSet = CharSet.Auto, SetLastError = true)]
+        internal static extern bool ConvertSidToStringSid(IntPtr pSID, out IntPtr ptrSid);
+
+        /// <summary>
+        /// Frees the specified local memory object and invalidates its handle.
+        /// </summary>
+        /// <param name="hMem">
+        /// A handle to the local memory object.
+        /// </param>
+        /// <returns>
+        /// If the function succeeds, the return value is NULL.
+        /// If the function fails, the return value is equal to a handle to the local memory object.
+        /// </returns>
+        [DllImport("kernel32.dll")]
+        internal static extern IntPtr LocalFree(IntPtr hMem);
     }
 }

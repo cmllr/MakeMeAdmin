@@ -1,5 +1,5 @@
 ﻿// 
-// Copyright © 2010-2018, Sinclair Community College
+// Copyright © 2010-2019, Sinclair Community College
 // Licensed under the GNU General Public License, version 3.
 // See the LICENSE file in the project root for full license information.  
 //
@@ -38,6 +38,14 @@ namespace SinclairCC.MakeMeAdmin
         /// This is stored in a variable because it is a rather expensive operation to check.
         /// </remarks>
         private bool userIsDirectAdmin = false;
+
+        /// <summary>
+        /// Whether the user is a member of the Administrator's group, either directly or
+        /// via nested group memberships.
+        /// </summary>
+        /// <remarks>
+        /// This is stored in a variable because it is a rather expensive operation to check.
+        /// </remarks>
         private bool userIsAdmin = false;
 
         /// <summary>
@@ -76,27 +84,42 @@ namespace SinclairCC.MakeMeAdmin
         }
 
 
+        /// <summary>
+        /// Handles the Elapsed event for the notification area icon.
+        /// </summary>
+        /// <param name="sender">
+        /// The timer whose Elapsed event is firing.
+        /// </param>
+        /// <param name="e">
+        /// Data related to the event.
+        /// </param>
         void NotifyIconTimerElapsed(object sender, System.Timers.ElapsedEventArgs e)
         {
             this.UpdateUserAdministratorStatus();
 
             if (this.userIsAdmin != this.userWasAdminOnLastCheck)
-            {
+            { // The user's administrator status has changed.
+
                 NetNamedPipeBinding namedPipeBinding = new NetNamedPipeBinding(NetNamedPipeSecurityMode.Transport);
-                ChannelFactory<IAdminGroup> namedPipeFactory = new ChannelFactory<IAdminGroup>(namedPipeBinding, Shared.NamedPipeServiceBaseAddress);
+                ChannelFactory<IAdminGroup> namedPipeFactory = new ChannelFactory<IAdminGroup>(namedPipeBinding, Settings.NamedPipeServiceBaseAddress);
                 IAdminGroup namedPipeChannel = namedPipeFactory.CreateChannel();
 
                 this.userWasAdminOnLastCheck = this.userIsAdmin;
-                if ((!this.userIsAdmin) && (!namedPipeChannel.PrincipalIsInList()))
+
+                if ((!this.userIsAdmin) && (!namedPipeChannel.UserIsInList()))
                 {
                     this.notifyIconTimer.Stop();
                     notifyIcon.ShowBalloonTip(5000, Properties.Resources.ApplicationName, string.Format(Properties.Resources.UIMessageRemovedFromGroup, LocalAdministratorGroup.LocalAdminGroupName), ToolTipIcon.Info);
                 }
+
                 namedPipeFactory.Close();
             }
         }
 
 
+        /// <summary>
+        /// Sets the form's text to the name of the application plus a partial version number.
+        /// </summary>
         private void SetFormText()
         {
             System.Text.StringBuilder formText = new System.Text.StringBuilder();
@@ -114,14 +137,6 @@ namespace SinclairCC.MakeMeAdmin
 
             this.Text = formText.ToString();
             this.notifyIcon.Text = formText.ToString();
-
-            /*
-#if DEBUG
-            //this.Text = string.Format("UI: {0}, Formatting: {1}", System.Threading.Thread.CurrentThread.CurrentUICulture.Name, System.Threading.Thread.CurrentThread.CurrentCulture.Name);
-            this.Text = string.Format("{0}: {1}", ApplicationLog.SName, ApplicationLog.SExists);
-#endif
-            */
-            
         }
 
 
@@ -142,15 +157,24 @@ namespace SinclairCC.MakeMeAdmin
         }
 
 
+        /// <summary>
+        /// This function runs when RunWorkerAsync() is called by the "grant admin rights" BackgroundWorker object.
+        /// </summary>
+        /// <param name="sender">
+        /// The BackgroundWorker that triggered the event.
+        /// </param>
+        /// <param name="e">
+        /// Data specific to this event.
+        /// </param>
         private void addUserBackgroundWorker_DoWork(object sender, System.ComponentModel.DoWorkEventArgs e)
         {
             NetNamedPipeBinding binding = new NetNamedPipeBinding(NetNamedPipeSecurityMode.Transport);
-            ChannelFactory<IAdminGroup> namedPipeFactory = new ChannelFactory<IAdminGroup>(binding, Shared.NamedPipeServiceBaseAddress);
+            ChannelFactory<IAdminGroup> namedPipeFactory = new ChannelFactory<IAdminGroup>(binding, Settings.NamedPipeServiceBaseAddress);
             IAdminGroup channel = namedPipeFactory.CreateChannel();
 
             try
             {
-                channel.AddPrincipalToAdministratorsGroup();
+                channel.AddUserToAdministratorsGroup();
             }
             catch (System.ServiceModel.EndpointNotFoundException)
             {
@@ -166,14 +190,23 @@ namespace SinclairCC.MakeMeAdmin
         }
 
 
+        /// <summary>
+        /// Occurs when the background operation has completed, has been canceled, or has raised an exception.
+        /// </summary>
+        /// <param name="sender">
+        /// The "grant admin rights" BackgroundWorker object, which triggered the event.
+        /// </param>
+        /// <param name="e">
+        /// Data specific to this event.
+        /// </param>
         private void addUserBackgroundWorker_RunWorkerCompleted(object sender, System.ComponentModel.RunWorkerCompletedEventArgs e)
         {
             if (e.Error != null)
             {
-                // TODO: i18n.
-                System.Text.StringBuilder message = new System.Text.StringBuilder("An error occurred while adding you to the Administrators group.");
+                System.Text.StringBuilder message = new System.Text.StringBuilder(Properties.Resources.UIMessageErrorWhileAdding);
                 message.Append(System.Environment.NewLine);
-                message.Append("error message: ");
+                message.Append(Properties.Resources.ErrorMessage);
+                message.Append(": ");
                 message.Append(e.Error.Message);
 
                 MessageBox.Show(this, message.ToString(), Properties.Resources.ApplicationName, MessageBoxButtons.OK, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button1, 0);
@@ -182,9 +215,9 @@ namespace SinclairCC.MakeMeAdmin
             this.UpdateUserAdministratorStatus();
 
             if (this.userIsAdmin)
-            {
+            { // Display a message that the user now has administrator rights.
                 this.appStatus.Text = Properties.Resources.ApplicationIsReady;
-                this.userWasAdminOnLastCheck = true;
+                this.userWasAdminOnLastCheck = this.userIsAdmin;
                 this.notifyIconTimer.Start();
                 notifyIcon.Visible = true;
                 this.Visible = false;
@@ -198,6 +231,15 @@ namespace SinclairCC.MakeMeAdmin
         }
 
 
+        /// <summary>
+        /// Handles the Click event for the rights removal button.
+        /// </summary>
+        /// <param name="sender">
+        /// The button being clicked.
+        /// </param>
+        /// <param name="e">
+        /// Data specific to this event.
+        /// </param>
         private void ClickRemoveRightsButton(object sender, EventArgs e)
         {
             this.DisableButtons();
@@ -206,48 +248,60 @@ namespace SinclairCC.MakeMeAdmin
         }
 
 
+        /// <summary>
+        /// This function runs when RunWorkerAsync() is called by the rights removal BackgroundWorker object.
+        /// </summary>
+        /// <param name="sender">
+        /// The BackgroundWorker that triggered the event.
+        /// </param>
+        /// <param name="e">
+        /// Data specific to this event.
+        /// </param>
         private void removeUserBackgroundWorker_DoWork(object sender, System.ComponentModel.DoWorkEventArgs e)
         {
             NetNamedPipeBinding binding = new NetNamedPipeBinding(NetNamedPipeSecurityMode.Transport);
-            ChannelFactory<IAdminGroup> namedPipeFactory = new ChannelFactory<IAdminGroup>(binding, Shared.NamedPipeServiceBaseAddress);
+            ChannelFactory<IAdminGroup> namedPipeFactory = new ChannelFactory<IAdminGroup>(binding, Settings.NamedPipeServiceBaseAddress);
             IAdminGroup channel = namedPipeFactory.CreateChannel();
-            channel.RemovePrincipalFromAdministratorsGroup(RemovalReason.UserRequest);
+            channel.RemoveUserFromAdministratorsGroup(RemovalReason.UserRequest);
             namedPipeFactory.Close();
         }
 
 
+        /// <summary>
+        /// Occurs when the background operation has completed, has been canceled, or has raised an exception.
+        /// </summary>
+        /// <param name="sender">
+        /// The rights removal BackgroundWorker object, which triggered the event.
+        /// </param>
+        /// <param name="e">
+        /// Data specific to this event.
+        /// </param>
         private void removeUserBackgroundWorker_RunWorkerCompleted(object sender, System.ComponentModel.RunWorkerCompletedEventArgs e)
         {
             if (e.Error != null)
             {
-                // TODO: i18n.
-                System.Text.StringBuilder message = new System.Text.StringBuilder("An error occurred while removing you from the Administrators group.");
+                System.Text.StringBuilder message = new System.Text.StringBuilder(Properties.Resources.UIMessageErrorWhileRemoving);
                 message.Append(System.Environment.NewLine);
-                message.Append("Please make sure the Make Me Admin service is running.");
+                message.Append(Properties.Resources.UIMessageEnsureServiceRunning);
                 message.Append(System.Environment.NewLine);
-                message.Append("error message: ");
+                message.Append(Properties.Resources.ErrorMessage);
+                message.Append(": ");
                 message.Append(e.Error.Message);
                 message.Append(System.Environment.NewLine);
-                message.Append("stack trace: ");
+                message.Append(Properties.Resources.StackTrace);
+                message.Append(": ");
                 message.Append(e.Error.StackTrace);
                 message.Append(System.Environment.NewLine);
 
                 if (e.Error.InnerException != null)
                 {
                     message.Append(System.Environment.NewLine);
-                    message.Append("inner error message: ");
                     message.Append(e.Error.InnerException.Message);
                     if (e.Error.InnerException.InnerException != null)
-                    {
+                    { // This is quite ridiculous.
                         message.Append(System.Environment.NewLine);
-                        message.Append("inner inner error message: ");
                         message.Append(e.Error.InnerException.InnerException.Message);
                     }
-                }
-                else
-                {
-                    message.Append(System.Environment.NewLine);
-                    message.Append("Inner exception is null.");
                 }
 
                 MessageBox.Show(this, message.ToString(), Properties.Resources.ApplicationName, MessageBoxButtons.OK, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button1, 0);
@@ -285,6 +339,15 @@ namespace SinclairCC.MakeMeAdmin
         }
 
 
+        /// <summary>
+        /// Handles the Load event for the form.
+        /// </summary>
+        /// <param name="sender">
+        /// The form being loaded.
+        /// </param>
+        /// <param name="e">
+        /// Data specific to this event.
+        /// </param>
         private void FormLoad(object sender, EventArgs e)
         {
             this.DisableButtons();
@@ -293,34 +356,54 @@ namespace SinclairCC.MakeMeAdmin
         }
 
 
-        /*
-        private bool UserIsDirectAdmin
-        {
-            get
-            {
-                return LocalAdministratorGroup.CurrentUserIsMemberOfAdministratorsDirectly();
-            }
-        }
-        */
-
-
+        /// <summary>
+        /// Updates the variables which store the user's administrator status.
+        /// </summary>
         private void UpdateUserAdministratorStatus()
         {
-            this.userIsAdmin = LocalAdministratorGroup.WindowsIdentityIsMember(WindowsIdentity.GetCurrent());
-            this.userIsDirectAdmin = LocalAdministratorGroup.CurrentUserIsMemberOfAdministratorsDirectly();
+            this.userIsAdmin = LocalAdministratorGroup.IsMemberOfAdministrators(WindowsIdentity.GetCurrent());
+            this.userIsDirectAdmin = LocalAdministratorGroup.IsMemberOfAdministratorsDirectly(WindowsIdentity.GetCurrent());
         }
 
 
+        /// <summary>
+        /// This function runs when RunWorkerAsync() is called by the button state BackgroundWorker object.
+        /// </summary>
+        /// <param name="sender">
+        /// The BackgroundWorker that triggered the event.
+        /// </param>
+        /// <param name="e">
+        /// Data specific to this event.
+        /// </param>
         private void DoButtonStateWork(object sender, System.ComponentModel.DoWorkEventArgs e)
         {
             this.UpdateUserAdministratorStatus();
         }
 
 
+        /// <summary>
+        /// Occurs when the background operation has completed, has been canceled, or has raised an exception.
+        /// </summary>
+        /// <param name="sender">
+        /// The button state BackgroundWorker object, which triggered the event.
+        /// </param>
+        /// <param name="e">
+        /// Data specific to this event.
+        /// </param>
         private void ButtonStateWorkCompleted(object sender, System.ComponentModel.RunWorkerCompletedEventArgs e)
         {
-            bool userIsAuthorizedLocally = Shared.UserIsAuthorized(WindowsIdentity.GetCurrent(), Settings.LocalAllowedEntities, Settings.LocalDeniedEntities);
+            NetNamedPipeBinding binding = new NetNamedPipeBinding(NetNamedPipeSecurityMode.Transport);
+            ChannelFactory<IAdminGroup> namedPipeFactory = new ChannelFactory<IAdminGroup>(binding, Settings.NamedPipeServiceBaseAddress);
+            IAdminGroup channel = namedPipeFactory.CreateChannel();
+            bool userIsAuthorizedLocally = channel.UserIsAuthorized(Settings.LocalAllowedEntities, Settings.LocalDeniedEntities);
+            namedPipeFactory.Close();
 
+            /*
+            bool userIsAuthorizedLocally = UserIsAuthorized(WindowsIdentity.GetCurrent(), Settings.LocalAllowedEntities, Settings.LocalDeniedEntities);
+            */
+
+            // Enable the "grant admin rights" button, if the user is not already
+            // an administrator and is authorized to obtain those rights.
             this.addMeButton.Enabled = !this.userIsAdmin && userIsAuthorizedLocally;
             if (addMeButton.Enabled)
             {
@@ -334,7 +417,11 @@ namespace SinclairCC.MakeMeAdmin
             {
                 addMeButton.Text = Properties.Resources.UIMessageUnauthorized;
             }
+
+            // Enable the rights removal button if the user is directly a
+            // member of the administrators group.
             this.removeMeButton.Enabled = this.userIsDirectAdmin;
+
             this.appStatus.Text = Properties.Resources.ApplicationIsReady;
 
             if (this.addMeButton.Enabled)
@@ -348,6 +435,15 @@ namespace SinclairCC.MakeMeAdmin
         }
 
 
+        /// <summary>
+        /// Handles the MouseDoubleClick event for the notification area icon.
+        /// </summary>
+        /// <param name="sender">
+        /// The notification icon that is being double-clicked.
+        /// </param>
+        /// <param name="e">
+        /// Data specific to this event.
+        /// </param>
         private void notifyIcon_MouseDoubleClick(object sender, MouseEventArgs e)
         {
             this.ShowInTaskbar = true;
@@ -355,8 +451,19 @@ namespace SinclairCC.MakeMeAdmin
         }
 
 
+        /// <summary>
+        /// Handles the VisibleChanged event for the form.
+        /// </summary>
+        /// <param name="sender">
+        /// The form whose visibility has changed.
+        /// </param>
+        /// <param name="e">
+        /// Data specific to the event.
+        /// </param>
         private void SubmitRequestForm_VisibleChanged(object sender, EventArgs e)
         {
+            // Update the enabled/disabled state of the buttons, if the worker
+            // is not already doing so.
             if (!buttonStateWorker.IsBusy)
             {
                 buttonStateWorker.RunWorkerAsync();
@@ -364,6 +471,15 @@ namespace SinclairCC.MakeMeAdmin
         }
 
 
+        /// <summary>
+        /// Handles the BalloonTipClosed event for the notification icon.
+        /// </summary>
+        /// <param name="sender">
+        /// The notification icon whose balloon tip was closed.
+        /// </param>
+        /// <param name="e">
+        /// Data specific to the event.
+        /// </param>
         private void notifyIcon_BalloonTipClosed(object sender, EventArgs e)
         {
             if (!this.userIsAdmin)
